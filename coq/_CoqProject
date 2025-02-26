@@ -20,6 +20,7 @@ verse/icfp.v
 stepverse/densem.v
 stepverse/label.v
 stepverse/result.v
+stepverse/entry.v
 stepverse/labeledSet.v
 stepverse/densemLabeledResult.v
 
