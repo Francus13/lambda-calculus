@@ -17,6 +17,10 @@ Declare Scope label_scope.
 Delimit Scope label_scope with label.
 Open Scope label_scope.
 
+Class EqDec (A : Type) :=  {
+  eqdec : forall(a b : A), {a = b} + {a <> b}
+}.
+
 Inductive entry (A : Type) : Type := 
    | Bot    : entry A                           (* unfinished *)
    | Val    : A -> entry A                      (* returned value *)
@@ -51,10 +55,12 @@ Module Entry.
     | Bot  , _    => Lt
     | _    , Bot  => Gt
 
+    (*
     | Val v1 , Val v2 => Eq 
     | Val v , Wrong => Eq
     | Wrong , Val v => Eq
     | Wrong , Wrong => Eq
+    *)
 
     | L l0 , L m0 => compare l0 m0
     | R l0 , R m0 => compare l0 m0 
@@ -134,10 +140,13 @@ Module Entry.
               ⊑ L (R (L Bot ⋈ R Bot))
    *)
   
-  Fixpoint approxb {A} (l1 l2 : entry A) : bool := 
+  Fixpoint approxb {A : Type} `{H : EqDec A} (l1 l2 : entry A) : bool := 
     match l1 , l2 with 
     | Bot , _  => true
-    | Val v1 , Val v2 => true        (* How to say syntactic equality v1 = v2, as a bool? *)
+    | Val v1 , Val v2 => match eqdec v1 v2 with
+                        | left _ => true 
+                        | right _ => false
+                        end
     | Wrong, Wrong => true
     | L l0 , L l1 => approxb l0 l1 
     | R l0 , R l1 => approxb l0 l1 
