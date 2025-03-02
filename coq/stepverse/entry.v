@@ -30,13 +30,31 @@ Inductive entry (A : Type) : Type :=
    | Br     : entry A -> entry A -> entry A     (* sequences choices *)
 .
 
-(* What exactly is this doing? *)
 Arguments Bot {_}.
 Arguments Val {_}.
 Arguments Wrong {_}.
 Arguments L {_}.
 Arguments R {_}.
 Arguments Br {_}.
+
+(* Trying to require entry have its type A be an instance of EqDec *)
+(*
+Inductive entry (A : Type) (H : EqDec A) : Type := 
+   | Bot    : entry H                          (* unfinished *)
+   | Val    : A -> entry H                      (* returned value *)
+   | Wrong  : entry H                           (* runtime error *)
+   | L      : entry H -> entry H                (* inside a left choice *)
+   | R      : entry H -> entry H                (* inside a right choice *)
+   | Br     : entry H -> entry H -> entry H     (* sequences choices *)
+.
+
+Arguments Bot {_} {_}.
+Arguments Val {_} {_}.
+Arguments Wrong {_} {_}.
+Arguments L {_} {_}.
+Arguments R {_} {_}.
+Arguments Br {_} {_}.
+*)
 
 (* 
     The first operand of Br should only have its labels inspected, not its result. 
@@ -50,18 +68,17 @@ Module Entry.
     (* Compares labels of the entry *)
     Fixpoint compare {A} (l m : entry A) : comparison := 
     match l , m with 
-    (* ASK: Why do we compare with Bot, and why is it less than everything else? *)
     | Bot  , Bot  => Eq
     | Bot  , _    => Lt
     | _    , Bot  => Gt
 
-    (*
+    (* These Eqs are necessary for the match 
+        in the Br case to work correctly *)
     | Val v1 , Val v2 => Eq 
     | Val v , Wrong => Eq
     | Wrong , Val v => Eq
     | Wrong , Wrong => Eq
-    *)
-
+    
     | L l0 , L m0 => compare l0 m0
     | R l0 , R m0 => compare l0 m0 
     | L _  , R _  => Lt
@@ -86,6 +103,8 @@ Module Entry.
     end.
 
     (* Denotes if it means anything to compare the entrys' labels *)
+    (* NOTE: As entries are refined, the entries they are 
+        comparable with strictly decrease *)
     Fixpoint comparable {A} (l1 l2 : entry A) : bool :=
     match l1 , l2 with 
     | Bot  , _    => true
@@ -101,7 +120,7 @@ Module Entry.
     | L _  , R _  => true
     | R _ , L _   => true
 
-    | Br l1 l2 , Br l3 l4 => comparable l1 l3 &&            (* Generalized, do we need? *)
+    | Br l1 l2 , Br l3 l4 => comparable l1 l3 &&            
                                 match compare l1 l3 with
                                 | Eq => comparable l2 l4
                                 | _  => true
@@ -140,7 +159,7 @@ Module Entry.
               ⊑ L (R (L Bot ⋈ R Bot))
    *)
   
-  Fixpoint approxb {A : Type} `{H : EqDec A} (l1 l2 : entry A) : bool := 
+  Fixpoint approxb {A : Type} `{EqDec A} (l1 l2 : entry A) : bool := 
     match l1 , l2 with 
     | Bot , _  => true
     | Val v1 , Val v2 => match eqdec v1 v2 with
@@ -154,46 +173,62 @@ Module Entry.
     | _ , _ => false
     end.
 
-(* 
-  Lemma approxb_refl : forall l, approxb l l = true.
-  Proof. induction l; eauto. simpl. rewrite IHl1. rewrite IHl2. auto. Qed.
 
-  Lemma approxb_trans : forall l2 l1 l3, 
+  Lemma approxb_refl {A : Type} `{EqDec A} : forall l , approxb l l = true.
+  Proof. induction l; auto. 
+    -
+    simpl.
+    destruct eqdec; auto.
+    -
+    simpl. rewrite IHl1. rewrite IHl2. auto. Qed.
+
+  (* Would there be a way to prove by induction on the approxb judgment? *)
+  Lemma approxb_trans {A : Type} `{EqDec A} : forall l2 l1 l3, 
       approxb l1 l2 = true -> approxb l2 l3 = true -> approxb l1 l3 = true.
-  Proof. induction l2. all: intros l1 l3. 
-         all: destruct l1; destruct l3.
-         all: simpl; intros h1 h2; try done. 
-
-         all: try (apply andb_prop in h1; move: h1 => [h1 h1']).
-         all: try (apply andb_prop in h2; move: h2 => [h2 h2']).
-
-         all: try (apply andb_true_intro; split; eauto 3).
-         eauto.
-         eauto.
+  Proof. induction l2; intros l1 l3. 
+    all: destruct l1; destruct l3.
+    all: simpl; intros h1 h2.
+    (* What is done? *)
+    all: try done. 
+    -
+    destruct eqdec in h1; destruct eqdec in h2; try done.
+    rewrite e; rewrite e0.
+    destruct eqdec; done.
+    -
+    rewrite IHl2; done.
+    -
+    rewrite IHl2; done.
+    -
+    apply andb_prop in h1; move: h1 => [h1 h1'];
+    apply andb_prop in h2; move: h2 => [h2 h2'].
+    (* Why does done not work here? *)
+    apply andb_true_intro; split; eauto.
   Qed.
 
 
 
   (* comparison relations *)
-  Definition lt (l m : label) : Prop := ltb l m = true.
-  Definition le (l m : label) : Prop := leb l m = true.
-  Definition eq (l m : label) : Prop := eqb l m = true.
-  Definition approx (l m : label) : Prop := approxb l m = true.
+  Definition lt {A} (l m : entry A) : Prop := ltb l m = true.
+  Definition le {A} (l m : entry A) : Prop := leb l m = true.
+  Definition eq {A} (l m : entry A) : Prop := eqb l m = true.
+  Definition approx {A} `{EqDec A} (l m : entry A) : Prop := approxb l m = true.
 
-Lemma approx_refl : forall x, approx x x.
-Proof. intros x. unfold approx. eapply approxb_refl. Qed.
+Lemma approx_refl {A : Type} `{EqDec A} : forall x, approx x x.
+Proof. intros x. unfold approx. apply approxb_refl. Qed.
  
-Lemma approx_trans l1 l2 l3 : Label.approx l1 l2 -> Label.approx l2 l3 -> Label.approx l1 l3.
-Proof. unfold Label.approx.  intros. eapply Label.approxb_trans; eauto. Qed.
+Lemma approx_trans {A : Type} `{EqDec A} : forall l2 l1 l3, 
+    approx l1 l2 -> approx l2 l3 -> approx l1 l3.
+    (* Why does normal apply and auto not work? *)
+Proof. unfold approx. intros. eapply approxb_trans; eauto. Qed.
 
 
-Lemma compare_refl: forall x, compare x x = Eq.
-Proof. induction x; simpl; eauto.
-       rewrite IHx1. rewrite IHx2. done.
-Qed.
+Lemma compare_refl {A : Type} : forall x, @compare A x x = Eq.
+Proof. induction x; simpl; eauto. rewrite IHx1. rewrite IHx2. done. Qed.
 
-
-Lemma compare_eq : forall x y, compare x y = Eq <-> x = y.
+  (* Need equality relation only comparing labels syntactically?
+      Though it feels subsumed by compare already. *)
+(*
+Lemma compare_eq {A : Type} : forall x y, @compare A x y = Eq <-> x = y.
 Proof. 
 intros x y.
 split.
@@ -227,63 +262,63 @@ Qed.
     subst. rewrite compare_refl in h. done.
     subst. rewrite compare_refl in h. done.
   Qed.
-      
+*)
 
-Lemma compare_transitive: forall y x z o, 
-    compare x y = o -> compare y z = o -> compare x z = o.
+(* What are these A's being instantiated with?
+    It maybe does not make sense for compare to 
+    only compare entries of the same type, 
+    since the type does not affect the label comparison *)
+Lemma compare_transitive {A : Type} : forall y x z o, 
+    @compare A x y = o -> @compare A y z = o -> @compare A x z = o.
 Proof. 
-  move=> y. induction y; intros x z o h1 h2.
-  all: destruct x; destruct z; simpl in *; subst; auto.
-  all: try solve [inversion h2; auto].
+  induction y; intros x z o h1 h2.
+  all: destruct x; destruct z; simpl in *; subst; auto; try done.
   destruct (compare y1 z1) eqn: c1;
   destruct (compare x1 y1) eqn: c2.
+  all: destruct (compare y2 z2) eqn: c3; apply eq_sym in h2.
+  all: try done.
+  all: try rewrite h2.
+  all: destruct (compare x1 z1) eqn: c4; try done; auto.
+  (* How to just apply IHy1 with c1 and c2 in all cases? *)
+Admitted.
+(*
+  erewrite IHy1 in c1. auto; erewrite IHy2 with (o := Eq); auto.
+  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Lt); auto.
+  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Gt); auto.
+
+  
+  all: try destruct (compare x2 z2) eqn: c5; try done; auto.
+
+
   all: try (rewrite compare_eq in c1; subst).
   all: try (rewrite compare_eq in c2; subst).
   all: try (rewrite compare_refl).
-  all: try rewrite c2; auto.
-  all: try rewrite c1; auto.
-  all: try solve [inversion h2].
   + erewrite IHy1 with (o := Lt); auto.
   + erewrite IHy1 with (o := Gt); auto.
 Qed.
+*)
 
-Lemma compare_antisymmetry : 
-  forall x, (forall y, compare x y = Lt <-> compare y x = Gt).
-Proof. intros x. induction x.
-       all: intros y. 
-       all: split.
-       all: intros h.
-       all: destruct y eqn:Ey; try (simpl in h; done).
-       - simpl.
-         simpl in h. 
-         destruct (compare l1 x1) eqn:h1.
-         rewrite compare_eq in h1. subst.
-         rewrite compare_refl in h. eauto.
-         eapply IHx2; eauto.
-         destruct (compare x1 l1) eqn:h2.
-         rewrite compare_eq in h2. subst. 
-         rewrite compare_refl in h1. done. 
-         eapply IHx1 in h2. rewrite h2 in h1. done.
-         move: (IHx1 l1) => [IH1 IH1']. done. 
-         move: (IHx1 l1) => [IH1 IH1'].  apply IH1' in h1.
-         rewrite h1 in h. done.
-       - simpl in *.
-         destruct (compare x1 l1) eqn: h1; try done.
-         + rewrite compare_eq in h1. subst.
-           rewrite compare_refl in h. rewrite IHx2. done.
-         + destruct (compare l1 x1) eqn:h2.
-           rewrite compare_eq in h2. subst.
-           rewrite compare_refl in h1. done.
-           done. 
-           rewrite <- IHx1 in h2. rewrite h2 in h1. done.
+Lemma compare_antisymmetry {A : Type} : 
+(* Why can the first compare's type argument be inferred? *)
+  forall x, (forall y, (compare x y = Lt <-> @compare A y x = Gt)
+      /\ (compare x y = Eq <-> @compare A y x = Eq)).
+Proof. induction x; intro y.
+  all: split; split; intro h.
+  all: destruct y eqn:Ey; simpl in *; try done.
+    (* Why do the IHs become bound here? *)
+    (* How would I apply IHx in the reverse direction? *)
+    (* Why does "rewrite IHx in *" do nothing? *)
+  all: try (destruct (IHx e)); 
+          try destruct (IHx1 e1); try destruct (IHx2 e2).
+  all: try rewrite H in h; try rewrite H; auto.
+  all: try rewrite H0 in h; try rewrite H0; auto.
+  all: try destruct (compare x1 e1) eqn:h1; try done.
+  all: destruct (compare e1 x1) eqn: h2; try done.
+  (* How to just simplify to contradiction? *)
+  all: destruct H0; try done.
+Admitted.
 
-       - simpl. simpl in h. rewrite IHx in h. done.
-       - simpl. simpl in h. rewrite IHx. done.
-       - simpl in *. rewrite IHx in h. done.
-       - simpl in *. rewrite IHx. done.
-Qed.
-
-
+(*
 Lemma ltb_irreflexive: forall x, not (ltb x x = true).
 intros x. unfold ltb. rewrite compare_refl. done.
 Qed.
