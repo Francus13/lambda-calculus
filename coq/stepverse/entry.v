@@ -188,7 +188,6 @@ Module Entry.
   Proof. induction l2; intros l1 l3. 
     all: destruct l1; destruct l3.
     all: simpl; intros h1 h2.
-    (* What is done? *)
     all: try done. 
     -
     destruct eqdec in h1; destruct eqdec in h2; try done.
@@ -264,42 +263,7 @@ Qed.
   Qed.
 *)
 
-(* What are these A's being instantiated with?
-    It maybe does not make sense for compare to 
-    only compare entries of the same type, 
-    since the type does not affect the label comparison *)
-Lemma compare_transitive {A : Type} : forall y x z o, 
-    @compare A x y = o -> @compare A y z = o -> @compare A x z = o.
-Proof. 
-  induction y; intros x z o h1 h2.
-  all: destruct x; destruct z; simpl in *; subst; auto; try done.
-  destruct (compare y1 z1) eqn: c1;
-  destruct (compare x1 y1) eqn: c2.
-  all: destruct (compare y2 z2) eqn: c3; apply eq_sym in h2.
-  all: try done.
-  all: try rewrite h2.
-  all: destruct (compare x1 z1) eqn: c4; try done; auto.
-  (* How to just apply IHy1 with c1 and c2 in all cases? *)
-Admitted.
-(*
-  erewrite IHy1 in c1. auto; erewrite IHy2 with (o := Eq); auto.
-  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Lt); auto.
-  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Gt); auto.
-
-  
-  all: try destruct (compare x2 z2) eqn: c5; try done; auto.
-
-
-  all: try (rewrite compare_eq in c1; subst).
-  all: try (rewrite compare_eq in c2; subst).
-  all: try (rewrite compare_refl).
-  + erewrite IHy1 with (o := Lt); auto.
-  + erewrite IHy1 with (o := Gt); auto.
-Qed.
-*)
-
 Lemma compare_antisymmetry {A : Type} : 
-(* Why can the first compare's type argument be inferred? *)
   forall x, (forall y, (compare x y = Lt <-> @compare A y x = Gt)
       /\ (compare x y = Eq <-> @compare A y x = Eq)).
 Proof. induction x; intro y.
@@ -315,8 +279,106 @@ Proof. induction x; intro y.
   all: try destruct (compare x1 e1) eqn:h1; try done.
   all: destruct (compare e1 x1) eqn: h2; try done.
   (* How to just simplify to contradiction? *)
-  all: destruct H0; try done.
+  all : destruct H0; 
+    try specialize (H0 eq_refl); try specialize (H3 eq_refl);
+    try discriminate.
+  all : destruct H; 
+    try specialize (H eq_refl); try specialize (H4 eq_refl);
+    try discriminate.
+ -
+ rewrite H1 in h; auto.
+ -
+ rewrite H1; auto.
+ -
+ rewrite H2 in h; auto.
+ -
+ rewrite H2; auto.
+Qed.
+
+Lemma compare_swap_lt {A : Type} : 
+forall x y : entry A, compare x y = Lt -> compare y x = Gt.
+Proof. intros. pose proof (compare_antisymmetry x y) as [[? _] _].
+
+Lemma compare_swap_gt {A : Type} : 
+forall x y : entry A, compare x y = Gt -> compare y x = Lt.
+
+Lemma compare_swap_eq {A : Type} : 
+forall x y : entry A, compare x y = Eq -> compare y x = Eq.
+
+
+Lemma compare_transitive_eq {A : Type} : forall y x z : entry A,
+  forall o, compare x y = Eq -> compare y z = o -> compare x z = o.
+Proof.
+  induction y; intros x z o h1 h2.
+  all: destruct x; destruct z.
+  all: simpl in *; subst; auto; try done.
+  destruct (compare x1 y1) eqn: c1; try discriminate.
+  destruct (compare y1 z1) eqn: c2;
+    try rewrite (IHy1 _ _ _ c1 c2); try done.
+  destruct (compare y2 z2) eqn: c3;
+    try rewrite (IHy2 _ _ _ h1 c3); try done.
+Qed.
+
+Lemma compare_transitive_same {A : Type} : forall y x z : entry A,
+forall o, compare x y = o -> compare y z = o -> compare x z = o.
+Proof. 
+  induction y; intros x z o h1 h2.
+  all: destruct x; destruct z.
+  all: simpl in *; subst; auto; try done.
+  destruct (compare x1 y1) eqn: c1;
+  destruct (compare y1 z1) eqn: c2;
+    try rewrite (IHy1 _ _ _ c1 c2); try done.
+  rewrite (IHy2 _ _ (compare x2 y2) eq_refl h2); done.
+  all: try rewrite (compare_transitive_eq _ _ _ c1 c2); try done.
+  all: rewrite compare_antisymmetry in c2.
+
+  -
+    
+  -
+  -
+    rewrite (compare_transitive_eq _ _ _ c1 c2). done.
+
+
+
+  destruct (compare y2 z2) eqn: c3;
+    try rewrite (IHy2 _ _ _ h1 c3); try done.
+
+
+
+  destruct (compare y1 z1) eqn: c1;
+  destruct (compare x1 y1) eqn: c2.
+  all: try rewrite (IHy1 _ _ _ c2 c1); try done.
+1:{
+  try rewrite (IHy2 _ _ (compare x2 y2) eq_refl h2); auto.
+}
+
+
+
+  all: destruct (compare y2 z2) eqn: c3; apply eq_sym in h2.
+  all: try done.
+  all: try rewrite h2.
+  all: destruct (compare x1 z1) eqn: c4; try done; auto.
+  (* How to just apply IHy1 with c1 and c2 in all cases? *)
 Admitted.
+(*
+  erewrite IHy1 with(o := Eq). auto; erewrite IHy2 with (o := Eq); auto.
+
+  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Lt); auto.
+  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Gt); auto.
+
+  
+  all: try destruct (compare x2 z2) eqn: c5; try done; auto.
+
+
+  all: try (rewrite compare_eq in c1; subst).
+  all: try (rewrite compare_eq in c2; subst).
+  all: try (rewrite compare_refl).
+  + erewrite IHy1 with (o := Lt); auto.
+  + erewrite IHy1 with (o := Gt); auto.
+Qed.
+*)
+
+
 
 (*
 Lemma ltb_irreflexive: forall x, not (ltb x x = true).
