@@ -224,44 +224,6 @@ Proof. unfold approx. intros. eapply approxb_trans; eauto. Qed.
 Lemma compare_refl {A : Type} : forall x, @compare A x x = Eq.
 Proof. induction x; simpl; eauto. rewrite IHx1. rewrite IHx2. done. Qed.
 
-  (* Need equality relation only comparing labels syntactically?
-      Though it feels subsumed by compare already. *)
-(*
-Lemma compare_eq {A : Type} : forall x y, @compare A x y = Eq <-> x = y.
-Proof. 
-intros x y.
-split.
-- move: y. 
-  induction x; intros y; destruct y.
-  all: simpl.
-  all: try done.
-  all: try (destruct (compare x1 y1) eqn:c1).
-  all: intro c2.
-  all: try done.
-  all: try rewrite (IHx1 y1); auto. 
-  all: try rewrite (IHx2 y2); auto. 
-  all: try rewrite (IHx y); auto. 
-- move: y. induction x; intros y; destruct y.
-  all: simpl.
-  all: try done.
-  all: try (destruct (compare x1 y1) eqn:c1).
-  all: intro c2.
-  all: try (inversion c2; subst; clear c2).
-  all: try rewrite (IHx1 y1); auto. 
-  all: rewrite IHx1 in c1; auto.
-Qed.
-
-
-  Lemma eq_eq : forall x y, eq x y <-> x = y.
-    intros x y. unfold eq. unfold eqb.
-    destruct (compare x y) eqn:h.
-    all: try rewrite compare_eq in h; subst.
-    all: intuition.
-    all: try done.
-    subst. rewrite compare_refl in h. done.
-    subst. rewrite compare_refl in h. done.
-  Qed.
-*)
 
 Lemma compare_antisymmetry {A : Type} : 
   forall x, (forall y, (compare x y = Lt <-> @compare A y x = Gt)
@@ -298,12 +260,17 @@ Qed.
 Lemma compare_swap_lt {A : Type} : 
 forall x y : entry A, compare x y = Lt -> compare y x = Gt.
 Proof. intros. pose proof (compare_antisymmetry x y) as [[? _] _].
+  auto. Qed.
 
 Lemma compare_swap_gt {A : Type} : 
 forall x y : entry A, compare x y = Gt -> compare y x = Lt.
+Proof. intros. pose proof (compare_antisymmetry y x) as [[_ ?] _].
+  auto. Qed.
 
 Lemma compare_swap_eq {A : Type} : 
 forall x y : entry A, compare x y = Eq -> compare y x = Eq.
+Proof. intros. pose proof (compare_antisymmetry x y) as [_ [? _]].
+  auto. Qed.
 
 
 Lemma compare_transitive_eq {A : Type} : forall y x z : entry A,
@@ -319,6 +286,7 @@ Proof.
     try rewrite (IHy2 _ _ _ h1 c3); try done.
 Qed.
 
+
 Lemma compare_transitive_same {A : Type} : forall y x z : entry A,
 forall o, compare x y = o -> compare y z = o -> compare x z = o.
 Proof. 
@@ -328,99 +296,48 @@ Proof.
   destruct (compare x1 y1) eqn: c1;
   destruct (compare y1 z1) eqn: c2;
     try rewrite (IHy1 _ _ _ c1 c2); try done.
-  rewrite (IHy2 _ _ (compare x2 y2) eq_refl h2); done.
+  1: rewrite (IHy2 _ _ (compare x2 y2) eq_refl h2); done.
   all: try rewrite (compare_transitive_eq _ _ _ c1 c2); try done.
-  all: rewrite compare_antisymmetry in c2.
-
-  -
-    
-  -
-  -
-    rewrite (compare_transitive_eq _ _ _ c1 c2). done.
-
-
-
-  destruct (compare y2 z2) eqn: c3;
-    try rewrite (IHy2 _ _ _ h1 c3); try done.
-
-
-
-  destruct (compare y1 z1) eqn: c1;
-  destruct (compare x1 y1) eqn: c2.
-  all: try rewrite (IHy1 _ _ _ c2 c1); try done.
-1:{
-  try rewrite (IHy2 _ _ (compare x2 y2) eq_refl h2); auto.
-}
-
-
-
-  all: destruct (compare y2 z2) eqn: c3; apply eq_sym in h2.
-  all: try done.
-  all: try rewrite h2.
-  all: destruct (compare x1 z1) eqn: c4; try done; auto.
-  (* How to just apply IHy1 with c1 and c2 in all cases? *)
-Admitted.
-(*
-  erewrite IHy1 with(o := Eq). auto; erewrite IHy2 with (o := Eq); auto.
-
-  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Lt); auto.
-  erewrite IHy1 with (o := Eq); auto; erewrite IHy2 with (o := Gt); auto.
-
-  
-  all: try destruct (compare x2 z2) eqn: c5; try done; auto.
-
-
-  all: try (rewrite compare_eq in c1; subst).
-  all: try (rewrite compare_eq in c2; subst).
-  all: try (rewrite compare_refl).
-  + erewrite IHy1 with (o := Lt); auto.
-  + erewrite IHy1 with (o := Gt); auto.
-Qed.
-*)
-
-
-
-(*
-Lemma ltb_irreflexive: forall x, not (ltb x x = true).
-intros x. unfold ltb. rewrite compare_refl. done.
+  1: apply compare_swap_lt in c1.
+  2: apply compare_swap_gt in c1.
+  all: apply compare_swap_eq in c2.
+  1: rewrite (compare_swap_gt _ _ (compare_transitive_eq _ _ _ c2 c1)).
+  2: rewrite (compare_swap_lt _ _ (compare_transitive_eq _ _ _ c2 c1)).
+  all: done.
 Qed.
 
-Lemma ltb_transitive : forall x y z, ltb x y = true -> ltb y z = true -> ltb x z = true.
+
+
+Lemma ltb_irreflexive {A : Type} : forall x : entry A, 
+  not (ltb x x = true).
+intros x. unfold ltb. rewrite compare_refl. done. Qed.
+
+Lemma ltb_transitive {A : Type} : forall x y z : entry A, 
+  ltb x y = true -> ltb y z = true -> ltb x z = true.
 intros x y z. unfold ltb. 
 destruct (compare x y) eqn:h1; intro h; try discriminate; clear h.
 destruct (compare y z) eqn:h2; intro h; try discriminate; clear h.
-move: (compare_transitive _ _ _ h1 h2) => h3. rewrite h3. done.
+move: (compare_transitive_same _ _ _ h1 h2) => h3. rewrite h3. done.
 Qed.
 
+Lemma lt_irreflexive {A : Type} : forall x : entry A, not (lt x x).
+Proof. intros x; unfold lt. apply ltb_irreflexive. Qed.
 
-  Lemma lt_irreflexive: forall x, not (lt x x).
-    intros x. unfold lt, ltb. rewrite compare_refl. done.
-  Qed.
+Lemma lt_transitive {A : Type} : forall x y z : entry A, 
+  lt x y -> lt y z -> lt x z.
+Proof. intros x y z; unfold lt. apply ltb_transitive. Qed.
+  (* What is solve and intuition?
+  OLD CODE: all: try solve [intuition]. *)
 
-  Lemma lt_transitive: forall x y z, lt x y -> lt y z -> lt x z.
-  Proof.
-    intros x y z. unfold lt, ltb.
-    destruct (compare x y) eqn:h1;
-    destruct (compare y z) eqn:h2;
-    destruct (compare x z) eqn:h3.
-    all: try solve [intuition].
-    +  move: (compare_transitive _ _ _ h1 h2) => h4.
-       rewrite h3 in h4. done.
-    +  move: (compare_transitive _ _ _ h1 h2) => h4.
-       rewrite h3 in h4. done.
-  Qed.
-
-
-Lemma leb_L l1 l1'  :
-  leb (L l1) (L l1') = true <->
-    leb l1 l1' = true.
+Lemma leb_L {A : Type} : forall l1 l1' : entry A,
+  leb (L l1) (L l1') = true <-> leb l1 l1' = true.
 Proof.
   split; unfold leb; simpl.
   all: destruct (compare l1 l1') eqn:E1.
   all: try done.
 Qed.
   
-Lemma leb_R l1 l1'  :
+Lemma leb_R {A : Type} : forall l1 l1' : entry A,
   leb (R l1) (R l1') = true <->
     leb l1 l1' = true.
 Proof.
@@ -429,87 +346,78 @@ Proof.
   all: try done.
 Qed.
 
-Lemma leb_Br l1 l1' l2 l2'  :
+Lemma leb_Br {A : Type} : forall l1 l1' l2 l2' : entry A,
   leb (Br l1 l2) (Br l1' l2') = true <->
-    ((ltb l1 l1' = true) \/ (l1 = l1' /\ leb l2 l2' = true)).
+    ((ltb l1 l1' = true) \/ (eqb l1 l1' = true /\ leb l2 l2' = true)).
 Proof.
   split.
-  -  unfold leb, ltb; simpl.
-     all: destruct (compare l1 l1') eqn:E1.
-     all: destruct (compare l2 l2') eqn:E2.
-     all: try solve [intuition].
-     all: intro h1; right; rewrite compare_eq in E1; split; auto.
-  - intros [h1|h1]; unfold leb, ltb; simpl.
-    all: destruct (compare l1 l1') eqn:E1.
-    all: destruct (compare l2 l2') eqn:E2.
-    all: try solve [intuition].
-    all: try rewrite compare_eq in E1; subst. 
-    all: try rewrite compare_eq in E2; subst. 
-    all: try move: (ltb_irreflexive l1') => h; try done.
-    all: unfold ltb in h1. 
-    all: try solve [destruct (compare l1 l1'); try done].
-    all: try move: h1 => [E h1]; subst.
-    all: unfold leb in h1. 
-    all: try solve [destruct (compare l2 l2'); try done].
-    rewrite compare_refl in E1. done.
-    rewrite compare_refl in E1. done.
+  -  unfold leb, ltb, eqb; simpl.
+     all: destruct (compare l1 l1'); destruct (compare l2 l2'); auto.
+  - unfold leb, ltb, eqb; intros [h1|h1]; simpl.
+    all: destruct (compare l1 l1'); destruct (compare l2 l2');
+      destruct h1; auto.
 Qed.
 
-  Lemma le_transitive :  forall y x z, 
+Lemma leb_def {A : Type} : forall l1 l2 : entry A,
+  leb l1 l2 = true <-> ltb l1 l2 = true \/ eqb l1 l2 = true.
+Proof.
+  intros l1 l2; unfold leb, ltb, eqb.
+  destruct (compare l1 l2).
+  all: split; auto.
+  intro h; destruct h; auto.
+Qed.
+
+(* Proof not done, but I'm not sure the syntactic sugar is all that useful *)
+(*
+  Lemma le_transitive {A : Type} :  forall y x z : entry A,
       le x y -> le y z -> le x z.
   Proof. 
-    intros y; induction y; intros x z h1 h2.
-    all: destruct x; destruct z; simpl.
-    all: try done.
+    induction y; intros x z h1 h2.
+    all: destruct x; destruct z; simpl; try done.
+    - unfold le in *. repeat rewrite leb_L in h1, h2; rewrite leb_L. auto.
+    - unfold le in *. repeat rewrite leb_R in h1, h2. rewrite leb_R. eauto.  
     - unfold le in *. rewrite leb_Br.
       repeat rewrite leb_Br in h1, h2.
-      destruct h1 as [h1 | [-> h1]];
-        destruct h2 as [h2 | [-> h2]].
+      destruct h1 as [h1 | [h1' h1]];
+        destruct h2 as [h2 | [h2' h2]].
       left. unfold ltb in *.
       destruct (compare x1 y1) eqn:E1; destruct (compare y1 z1) eqn:E2; 
         destruct (compare x1 z1) eqn:E3.
-      all: try intuition.
-      rewrite compare_eq in E3. subst.
-      move: (compare_transitive _ _ _ E1 E2) => h. rewrite compare_refl in h. done.
-      move: (compare_transitive _ _ _ E1 E2) => h. rewrite h in E3. done.
-    - unfold le in *. repeat rewrite leb_L in h1, h2. rewrite leb_L. eauto.
-    - unfold le in *. repeat rewrite leb_R in h1, h2. rewrite leb_R. eauto.       
-  Qed.
-
-
-Lemma approxb_leb : forall l1 l2, 
-    Label.approxb l1 l2 = true -> Label.leb l1 l2 = true.
-Proof. 
-  induction l1; intros l2; destruct l2; simpl.
-    all: try done.
-    - rewrite -> Bool.andb_true_iff.
-      intros [h1 h2].
-      apply IHl1_1 in h1.
-      apply IHl1_2 in h2.
-      unfold Label.leb in h1, h2.
-      destruct (Label.compare l1_1 l2_1) eqn:E1.
-      destruct (Label.compare l1_2 l2_2) eqn:E2.
       all: try done.
-      all: try rewrite Label.compare_eq in E1.
-      all: try rewrite Label.compare_eq in E2.
-      all: subst.
-      ++ unfold Label.leb. rewrite Label.compare_refl. auto.
-      ++ unfold Label.leb. simpl. rewrite Label.compare_refl. rewrite E2. auto.
-      ++ unfold Label.leb. simpl. rewrite E1.
-         destruct (Label.compare l1_2 l2_2) eqn:E2; try done.
-    - intro h. apply IHl1 in h.
-      unfold Label.leb in *. simpl. auto.
-    - intro h. apply IHl1 in h.
-      unfold Label.leb in *. simpl. auto.
+      1, 2: move: (compare_transitive_same _ _ _ E1 E2) => h; 
+        rewrite h in E3; done.
+      move: (compare_transitive_same _ _ _ E1 E2) => h. rewrite h in E3. done.     
+  Qed.
+*)
+
+
+Lemma approxb_leb {A : Type} `{EqDec A} : forall l1 l2 : entry A,
+    approxb l1 l2 = true -> leb l1 l2 = true.
+Proof. 
+  induction l1; intros l2; destruct l2; simpl; try done.
+  - rewrite leb_L; auto.
+  - rewrite leb_R; auto.
+  - rewrite leb_Br.
+      intros h; rewrite Bool.andb_true_iff in h; destruct h.
+      apply IHl1_1 in H0; apply IHl1_2 in H1.
+      rewrite leb_def in H0; destruct H0; auto.
   Qed.
 
+  Lemma approxb_le {A : Type} `{EqDec A} : forall l1 l2 : entry A,
+      approxb l1 l2 = true -> le l1 l2.
+  Proof. intros. unfold le. eapply approxb_leb. auto. Qed.
 
-  Lemma approxb_le : forall l1 l2, 
-      approxb l1 l2 = true -> Label.le l1 l2.
-  Proof. intros. unfold Label.le. eapply Label.approxb_leb. auto. Qed.
+Lemma eqb_symmetry {A : Type} : forall l1 l2 : entry A,
+  eqb l1 l2 = true -> eqb l2 l1 = true.
+Proof.
+  unfold eqb; intros l1 l2 h. 
+  destruct (compare l1 l2) eqn: h1; try done. 
+  apply compare_swap_eq in h1; rewrite h1; done.
+Qed.
 
-Lemma leb_antisymmetry k1 k2 : 
-  Label.leb k1 k2 = true -> Label.leb k2 k1 = true -> k1 = k2.
+(*
+Lemma leb_antisymmetry {A : Type} : forall l1 l2 : entry A,
+  leb l1 l2 = true -> leb l2 l1 = true -> eqb l1 l2.
 Proof. 
   unfold leb.
 Admitted.
